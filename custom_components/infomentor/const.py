@@ -14,7 +14,9 @@ CONF_MODULES = "modules"
 
 CONF_AUTO_DOWNLOAD = "auto_download"
 CONF_DOWNLOAD_PATH = "download_path"
+CONF_PREP_LESSON_KEYWORDS = "prep_lesson_keywords"
 DEFAULT_DOWNLOAD_PATH = "/media/infomentor"
+DEFAULT_PREP_LESSON_KEYWORDS = ["IDH", "Idrott", "SL", "Träslöjd", "Traslojd"]
 
 MODULE_TIMETABLE = "timetable"
 MODULE_CALENDAR = "calendar"

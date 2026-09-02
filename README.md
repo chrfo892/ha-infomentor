@@ -45,11 +45,24 @@ Per pupil:
 | `binary_sensor.<pupil>_checked_in` | On while the child is checked in at school |
 | `binary_sensor.<pupil>_pickup_comment_missing` | On when today has no parent comment |
 | `calendar.<pupil>_schedule` | Timetable plus calendar entries |
+| `calendar.<pupil>_lesson_preparation` | Timetable entries that match preparation keywords |
 
 Modules that a pupil does not have (a preschooler has no timetable) are skipped
 rather than reported as errors. Which modules to fetch is configurable per pupil
 in the integration options, so you can turn off learnlog for a child whose
 teacher never posts.
+
+The lesson preparation calendar is built from timetable lessons. Configure the
+comma-separated keywords in integration options; defaults are `IDH`, `Idrott`,
+`SL`, `Träslöjd`, and `Traslojd`.
+
+Calendar events are named with the preparation subject and the pupil's first
+name, for example `Idrott Anna` or `Slöjd Anna`. Descriptions are Swedish
+reminders such as `Kom ihåg att packa idrottskläder.` or `Kom ihåg oömma
+kläder.`
+
+Matching is token-aware for acronyms, so `SL` matches a lesson called `SL` but
+does not match random text containing the letters `sl`.
 
 ## Pickup comment reminder
 

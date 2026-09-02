@@ -31,8 +31,10 @@ from .const import (
     CONF_AUTO_DOWNLOAD,
     CONF_DOWNLOAD_PATH,
     CONF_MODULES,
+    CONF_PREP_LESSON_KEYWORDS,
     CONF_SCAN_MINUTES,
     DEFAULT_DOWNLOAD_PATH,
+    DEFAULT_PREP_LESSON_KEYWORDS,
     DEFAULT_SCAN_MINUTES,
     DOMAIN,
     PLATFORMS,
@@ -105,6 +107,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.options.get(CONF_MODULES),
         download_path,
         default_download_path,
+        entry.options.get(CONF_PREP_LESSON_KEYWORDS, DEFAULT_PREP_LESSON_KEYWORDS),
     )
     await coordinator.async_config_entry_first_refresh()
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -55,6 +56,28 @@ def _safe_folder(name: str) -> str:
     return safe_path_part(name) or "pupil"
 
 
+def _normalize(text: str) -> str:
+    text = unicodedata.normalize("NFKD", text)
+    text = text.encode("ascii", "ignore").decode("ascii")
+    return text.casefold()
+
+
+def _matches_any_keyword(text: str, keywords: list[str]) -> bool:
+    normalized = _normalize(text)
+    tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    for keyword in keywords:
+        needle = _normalize(keyword).strip()
+        if not needle:
+            continue
+        if re.fullmatch(r"[a-z0-9]+", needle):
+            if needle in tokens:
+                return True
+            continue
+        if needle in normalized:
+            return True
+    return False
+
+
 def _subfolder(media: MediaFile) -> Path:
     """Group posts go in their own folder so they are easy to tell apart."""
     if media.source == "calendar":
@@ -87,6 +110,7 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
         modules: dict[str, list[str]] | None = None,
         download_path: str | None = None,
         default_download_path: str | None = None,
+        prep_lesson_keywords: list[str] | None = None,
     ) -> None:
         super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=update_interval)
         self.client = client
@@ -94,6 +118,7 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
         self._modules = modules or {}
         self._download_path = download_path
         self.default_download_path = default_download_path
+        self.prep_lesson_keywords = prep_lesson_keywords or []
         self._lock = asyncio.Lock()
         self._store: Store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._seen_files: set[int] = set()
@@ -102,6 +127,14 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
     def modules_for(self, pupil_id: str) -> list[str]:
         """Unconfigured pupils fetch everything."""
         return self._modules.get(pupil_id) or ALL_MODULES
+
+    def lesson_requires_preparation(self, lesson: dict[str, Any]) -> bool:
+        text = " ".join(
+            str(lesson.get(key) or "") for key in ("title", "details")
+        )
+        notes = lesson.get("notes") or {}
+        text += " " + " ".join(str(value or "") for value in notes.values())
+        return _matches_any_keyword(text, self.prep_lesson_keywords)
 
     async def _async_update_data(self) -> dict[str, PupilData]:
         if not self._loaded_seen:

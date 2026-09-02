@@ -26,10 +26,12 @@
         "data": {
           "scan_minutes": "Update interval (minutes)",
           "auto_download": "Automatically download new photos and letters",
-          "download_path": "Download folder"
+          "download_path": "Download folder",
+          "prep_lesson_keywords": "Lesson preparation keywords"
         },
         "data_description": {
-          "download_path": "Files are saved as <folder>/<pupil>/photos and /letters. Use a path under /media or one listed in allowlist_external_dirs."
+          "download_path": "Files are saved as <folder>/<pupil>/photos and /letters. Use a path under /media or one listed in allowlist_external_dirs.",
+          "prep_lesson_keywords": "Comma-separated lesson titles or acronyms that should appear in the Lesson preparation calendar, for example IDH, Idrott, SL."
         }
       },
       "pupil": {

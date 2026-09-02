@@ -17,8 +17,10 @@ from .const import (
     CONF_AUTO_DOWNLOAD,
     CONF_DOWNLOAD_PATH,
     CONF_MODULES,
+    CONF_PREP_LESSON_KEYWORDS,
     CONF_SCAN_MINUTES,
     DEFAULT_DOWNLOAD_PATH,
+    DEFAULT_PREP_LESSON_KEYWORDS,
     DEFAULT_SCAN_MINUTES,
     DOMAIN,
     MIN_SCAN_MINUTES,
@@ -88,6 +90,9 @@ class InfoMentorOptionsFlow(OptionsFlow):
                 CONF_SCAN_MINUTES: user_input[CONF_SCAN_MINUTES],
                 CONF_AUTO_DOWNLOAD: user_input[CONF_AUTO_DOWNLOAD],
                 CONF_DOWNLOAD_PATH: user_input[CONF_DOWNLOAD_PATH],
+                CONF_PREP_LESSON_KEYWORDS: _split_keywords(
+                    user_input[CONF_PREP_LESSON_KEYWORDS]
+                ),
                 CONF_MODULES: dict(self.config_entry.options.get(CONF_MODULES, {})),
             }
             self._index = 0
@@ -111,6 +116,15 @@ class InfoMentorOptionsFlow(OptionsFlow):
                     vol.Optional(
                         CONF_DOWNLOAD_PATH,
                         default=options.get(CONF_DOWNLOAD_PATH, DEFAULT_DOWNLOAD_PATH),
+                    ): str,
+                    vol.Optional(
+                        CONF_PREP_LESSON_KEYWORDS,
+                        default=", ".join(
+                            options.get(
+                                CONF_PREP_LESSON_KEYWORDS,
+                                DEFAULT_PREP_LESSON_KEYWORDS,
+                            )
+                        ),
                     ): str,
                 }
             ),
@@ -140,3 +154,7 @@ class InfoMentorOptionsFlow(OptionsFlow):
             ),
             description_placeholders={"pupil": pupil.name},
         )
+
+
+def _split_keywords(value: str) -> list[str]:
+    return [keyword.strip() for keyword in value.split(",") if keyword.strip()]
