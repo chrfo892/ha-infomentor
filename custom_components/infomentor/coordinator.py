@@ -257,6 +257,17 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
         path: str | None = None,
         filename: str | None = None,
     ) -> str | None:
+        async with self._lock:
+            await self.client.switch_pupil(pupil.id)
+            return await self._download_current_pupil(media, pupil, path, filename)
+
+    async def _download_current_pupil(
+        self,
+        media: MediaFile,
+        pupil: Pupil,
+        path: str | None = None,
+        filename: str | None = None,
+    ) -> str | None:
         base = path or self._download_path
         if not base:
             return None
@@ -273,6 +284,9 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
             content = await self.client.download(media.url)
         except (InfoMentorError, aiohttp.ClientError, asyncio.TimeoutError) as err:
             _LOGGER.warning("Could not download %s: %s", media.filename, err)
+            return None
+        if not content:
+            _LOGGER.warning("InfoMentor returned an empty file for %s", media.filename)
             return None
 
         target = folder / (filename or media.filename)
@@ -345,7 +359,7 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
                     if item.file_id in seen:
                         continue
                     seen.add(item.file_id)
-                    if await self._download(item, pupil, path):
+                    if await self._download_current_pupil(item, pupil, path):
                         saved += 1
                         self._seen_files.add(item.file_id)
                     else:
