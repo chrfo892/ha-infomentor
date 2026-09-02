@@ -1,0 +1,92 @@
+download_file:
+  name: Download file
+  description: >-
+    Download an InfoMentor file (learnlog image or calendar attachment) to disk.
+    The URLs are session-authenticated, so only the integration can fetch them.
+  fields:
+    file_id:
+      name: File ID
+      description: File id from an infomentor_new_* event or a sensor attribute.
+      required: true
+      example: 18727886
+      selector:
+        number:
+          mode: box
+    path:
+      name: Target directory
+      description: Directory to save into. Must be listed in allowlist_external_dirs.
+      required: true
+      example: /media/infomentor
+      selector:
+        text:
+    filename:
+      name: Filename
+      description: Override the filename. Defaults to the original name.
+      required: false
+      selector:
+        text:
+
+download_backlog:
+  name: Download backlog
+  description: >-
+    Download older learnlog photos and calendar attachments for a date range.
+    Use this once to archive posts from before the integration was installed.
+  fields:
+    start_date:
+      name: Start date
+      description: Oldest date to include.
+      required: true
+      example: "2023-01-01"
+      selector:
+        date:
+    end_date:
+      name: End date
+      description: Newest date to include. Defaults to today.
+      required: false
+      selector:
+        date:
+    device_id:
+      name: Pupils
+      description: Pick the pupil devices to download for. Defaults to all.
+      required: false
+      selector:
+        device:
+          integration: infomentor
+          multiple: true
+    pupil_id:
+      name: Pupil IDs
+      description: Alternative to picking devices - raw InfoMentor pupil ids.
+      required: false
+      advanced: true
+      example: "1234567"
+      selector:
+        text:
+          multiple: true
+    sources:
+      name: Sources
+      description: What to download.
+      required: false
+      default: ["photos", "letters"]
+      selector:
+        select:
+          multiple: true
+          options:
+            - "photos"
+            - "letters"
+    path:
+      name: Target directory
+      description: >-
+        Override the download folder. Defaults to the folder configured in the
+        integration options.
+      required: false
+      example: /media/infomentor
+      selector:
+        text:
+    limit:
+      name: Limit
+      description: Stop after this many files. Useful for a first test run.
+      required: false
+      example: 10
+      selector:
+        number:
+          mode: box

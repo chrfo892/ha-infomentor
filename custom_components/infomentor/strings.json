@@ -1,0 +1,44 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "InfoMentor",
+        "description": "Sign in with your InfoMentor guardian account.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid username or password.",
+      "cannot_connect": "Could not connect to InfoMentor.",
+      "no_pupils": "Logged in, but no pupils were found on this account."
+    },
+    "abort": {
+      "already_configured": "This account is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "InfoMentor options",
+        "data": {
+          "scan_minutes": "Update interval (minutes)",
+          "auto_download": "Automatically download new photos and letters",
+          "download_path": "Download folder"
+        },
+        "data_description": {
+          "download_path": "Files are saved as <folder>/<pupil>/photos and /letters. Use a path under /media or one listed in allowlist_external_dirs."
+        }
+      },
+      "pupil": {
+        "title": "Modules for {pupil}",
+        "description": "Choose what to fetch for this pupil. Unselected modules are never requested.",
+        "data": {
+          "modules": "Modules"
+        }
+      }
+    }
+  }
+}

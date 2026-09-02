@@ -1,0 +1,375 @@
+"""Coordinator that fetches every pupil sequentially.
+
+switch_pupil() mutates server-side session state, so concurrent fetches would
+return the wrong child's data. All refreshes are serialised behind a lock.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import re
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+import aiohttp
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+
+from .api import (
+    LEARNLOG_GROUP,
+    LEARNLOG_INDIVIDUAL,
+    InfoMentorAuthError,
+    InfoMentorClient,
+    InfoMentorError,
+    LearnLogEntry,
+    MediaFile,
+    ModuleUnavailable,
+    Pupil,
+    safe_path_part,
+)
+from .const import (
+    ALL_MODULES,
+    DOMAIN,
+    EVENT_NEW_CALENDAR_ATTACHMENT,
+    EVENT_NEW_LEARNLOG_MEDIA,
+    MODULE_ATTENDANCE,
+    MODULE_CALENDAR,
+    MODULE_LEARNLOG,
+    MODULE_NOTIFICATIONS,
+    MODULE_TIMEREGISTRATION,
+    MODULE_TIMETABLE,
+    SOURCE_LETTERS,
+    SOURCE_PHOTOS,
+    STORAGE_KEY,
+    STORAGE_VERSION,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def _safe_folder(name: str) -> str:
+    return safe_path_part(name) or "pupil"
+
+
+def _subfolder(media: MediaFile) -> Path:
+    """Group posts go in their own folder so they are easy to tell apart."""
+    if media.source == "calendar":
+        return Path("letters")
+    if media.is_group:
+        return Path("photos") / "group" / _safe_folder(media.group_name)
+    return Path("photos") / "individual"
+
+
+@dataclass
+class PupilData:
+    pupil: Pupil
+    timetable: list[dict[str, Any]] = field(default_factory=list)
+    calendar: list[dict[str, Any]] = field(default_factory=list)
+    notifications: list[dict[str, Any]] = field(default_factory=list)
+    attendance: dict[str, Any] | None = None
+    learnlog: list[LearnLogEntry] = field(default_factory=list)
+    media: list[MediaFile] = field(default_factory=list)
+    time_registration_today: dict[str, Any] | None = None
+    time_registration_week: list[dict[str, Any]] = field(default_factory=list)
+
+
+class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        client: InfoMentorClient,
+        pupils: list[Pupil],
+        update_interval: timedelta,
+        modules: dict[str, list[str]] | None = None,
+        download_path: str | None = None,
+    ) -> None:
+        super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=update_interval)
+        self.client = client
+        self.pupils = pupils
+        self._modules = modules or {}
+        self._download_path = download_path
+        self._lock = asyncio.Lock()
+        self._store: Store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        self._seen_files: set[int] = set()
+        self._loaded_seen = False
+
+    def modules_for(self, pupil_id: str) -> list[str]:
+        """Unconfigured pupils fetch everything."""
+        return self._modules.get(pupil_id) or ALL_MODULES
+
+    async def _async_update_data(self) -> dict[str, PupilData]:
+        if not self._loaded_seen:
+            stored = await self._store.async_load()
+            self._seen_files = set(stored or [])
+            self._loaded_seen = True
+            first_run = not self._seen_files
+        else:
+            first_run = False
+
+        async with self._lock:
+            try:
+                data = {}
+                for pupil in self.pupils:
+                    await self.client.switch_pupil(pupil.id)
+                    data[pupil.id] = await self._fetch_pupil(pupil)
+            except InfoMentorAuthError as err:
+                raise UpdateFailed(f"Authentication failed: {err}") from err
+            except InfoMentorError as err:
+                raise UpdateFailed(f"InfoMentor request failed: {err}") from err
+            except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+                raise UpdateFailed(f"Connection to InfoMentor failed: {err}") from err
+
+        await self._emit_new_media(data, suppress=first_run)
+        return data
+
+    async def _fetch_pupil(self, pupil: Pupil) -> PupilData:
+        today = date.today()
+        monday = today - timedelta(days=today.weekday())
+        result = PupilData(pupil=pupil)
+        enabled = self.modules_for(pupil.id)
+
+        if MODULE_TIMETABLE in enabled:
+            result.timetable = await self._safe(
+                self.client.get_timetable(monday, monday + timedelta(days=13)), []
+            )
+        if MODULE_CALENDAR in enabled:
+            result.calendar = await self._safe(
+                self.client.get_calendar(
+                    monday - timedelta(days=7), monday + timedelta(days=13)
+                ),
+                [],
+            )
+        if MODULE_NOTIFICATIONS in enabled:
+            notifications = await self._safe(self.client.get_notifications(), {})
+            # The endpoint returns every pupil's notifications; only the flag differs.
+            result.notifications = [
+                item
+                for item in (notifications or {}).get("notifications", []) or []
+                if item.get("currentlySelectedPupil")
+            ]
+        if MODULE_ATTENDANCE in enabled:
+            result.attendance = await self._safe(self.client.get_attendance(), None)
+        if MODULE_LEARNLOG in enabled:
+            entries = await self._safe(
+                self.client.get_learnlog_entries(LEARNLOG_INDIVIDUAL), []
+            )
+            group = await self._safe(self.client.get_learnlog_entries(LEARNLOG_GROUP), [])
+            seen_entries = {entry.id for entry in entries}
+            entries += [entry for entry in group if entry.id not in seen_entries]
+            result.learnlog = entries
+        if MODULE_TIMEREGISTRATION in enabled:
+            registrations = await self._safe(self.client.get_time_registrations(), {})
+            result.time_registration_week = (registrations or {}).get("days", []) or []
+            if self._registered_today(result.time_registration_week, today):
+                result.time_registration_today = await self._safe(
+                    self.client.get_time_registration_day(today), None
+                )
+
+        media: list[MediaFile] = []
+        for entry in result.learnlog:
+            media.extend(entry.media)
+        for entry in result.calendar:
+            if entry.get("hasAttachments"):
+                media.extend(
+                    await self._safe(
+                        self.client.get_calendar_attachments(
+                            entry["id"],
+                            entry.get("title", ""),
+                            (entry.get("startDate") or "")[:10],
+                        ),
+                        [],
+                    )
+                )
+        result.media = media
+        return result
+
+    @staticmethod
+    def _registered_today(days: list[dict[str, Any]], today: date) -> bool:
+        """Skip the extra request on days off and when the school is closed."""
+        for day in days:
+            raw = day.get("date") or ""
+            if raw[:10] != today.isoformat():
+                continue
+            return not day.get("onLeave") and not day.get("isSchoolClosed")
+        return False
+
+    async def _safe(self, coro, default):
+        """Modules differ per pupil; a preschooler has no timetable."""
+        try:
+            result = await coro
+        except ModuleUnavailable:
+            return default
+        except InfoMentorError as err:
+            _LOGGER.warning("InfoMentor fetch failed: %s", err)
+            return default
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            _LOGGER.warning("InfoMentor connection issue: %s", err)
+            return default
+        # An empty body decodes to None, which callers iterate over.
+        return default if result is None else result
+
+    async def _emit_new_media(self, data: dict[str, PupilData], suppress: bool) -> None:
+        new_ids: set[int] = set()
+        for pupil_id, pupil_data in data.items():
+            for media in pupil_data.media:
+                if media.file_id in self._seen_files or media.file_id in new_ids:
+                    continue
+                new_ids.add(media.file_id)
+                if suppress:
+                    continue
+
+                saved_path = await self._download(media, pupil_data.pupil)
+                event = (
+                    EVENT_NEW_LEARNLOG_MEDIA
+                    if media.source == "learnlog"
+                    else EVENT_NEW_CALENDAR_ATTACHMENT
+                )
+                self.hass.bus.async_fire(
+                    event,
+                    {
+                        "pupil_id": pupil_id,
+                        "pupil_name": pupil_data.pupil.name,
+                        "file_id": media.file_id,
+                        "filename": media.filename,
+                        "entry_id": media.entry_id,
+                        "entry_title": media.entry_title,
+                        "entry_date": media.entry_date,
+                        "scope": "group" if media.is_group else "individual",
+                        "group_name": media.group_name,
+                        "path": saved_path,
+                    },
+                )
+
+        if new_ids:
+            self._seen_files |= new_ids
+            await self._store.async_save(sorted(self._seen_files))
+
+    async def _download(
+        self, media: MediaFile, pupil: Pupil, path: str | None = None
+    ) -> str | None:
+        base = path or self._download_path
+        if not base:
+            return None
+
+        folder = Path(base) / _safe_folder(pupil.name) / _subfolder(media)
+        if not self.hass.config.is_allowed_path(str(folder)):
+            _LOGGER.error(
+                "%s is not an allowed path; add it to allowlist_external_dirs or use /media",
+                folder,
+            )
+            return None
+
+        try:
+            content = await self.client.download(media.url)
+        except (InfoMentorError, aiohttp.ClientError, asyncio.TimeoutError) as err:
+            _LOGGER.warning("Could not download %s: %s", media.filename, err)
+            return None
+
+        target = folder / media.filename
+
+        def _write() -> None:
+            folder.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+
+        try:
+            await self.hass.async_add_executor_job(_write)
+        except OSError as err:
+            _LOGGER.warning("Could not save %s: %s", target, err)
+            return None
+
+        _LOGGER.debug("Saved InfoMentor file to %s", target)
+        return str(target)
+
+    def find_media(self, file_id: int) -> MediaFile | None:
+        for pupil_data in (self.data or {}).values():
+            for media in pupil_data.media:
+                if media.file_id == file_id:
+                    return media
+        return None
+
+    # ------------------------------------------------------------------ backlog
+
+    async def async_download_backlog(
+        self,
+        pupils: list[Pupil],
+        start: date,
+        end: date,
+        sources: list[str],
+        path: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """Fetch older posts that predate the seen-files ledger."""
+        saved = 0
+        failed = 0
+        seen: set[int] = set()
+
+        async with self._lock:
+            for pupil in pupils:
+                if limit is not None and saved >= limit:
+                    break
+                await self.client.switch_pupil(pupil.id)
+
+                media: list[MediaFile] = []
+                if SOURCE_PHOTOS in sources:
+                    media += await self._backlog_learnlog(start, end)
+                if SOURCE_LETTERS in sources:
+                    media += await self._backlog_calendar(start, end)
+
+                for item in media:
+                    if limit is not None and saved >= limit:
+                        break
+                    if item.file_id in seen:
+                        continue
+                    seen.add(item.file_id)
+                    if await self._download(item, pupil, path):
+                        saved += 1
+                        self._seen_files.add(item.file_id)
+                    else:
+                        failed += 1
+
+        if saved:
+            await self._store.async_save(sorted(self._seen_files))
+        _LOGGER.info("Backlog download finished: %s saved, %s failed", saved, failed)
+        return {"downloaded": saved, "failed": failed}
+
+    async def _backlog_learnlog(self, start: date, end: date) -> list[MediaFile]:
+        page_size = 50
+        media: list[MediaFile] = []
+        for learn_log_type in (LEARNLOG_INDIVIDUAL, LEARNLOG_GROUP):
+            for page in range(1, 101):
+                entries = await self._safe(
+                    self.client.get_learnlog_entries(learn_log_type, page, page_size), []
+                )
+                if not entries:
+                    break
+                # Entries are newest first, so an older one means we can stop.
+                reached_start = False
+                for entry in entries:
+                    day = entry.modified_on.date() if entry.modified_on else None
+                    if day and day < start:
+                        reached_start = True
+                        continue
+                    if day and day > end:
+                        continue
+                    media.extend(entry.media)
+                if reached_start or len(entries) < page_size:
+                    break
+        return media
+
+    async def _backlog_calendar(self, start: date, end: date) -> list[MediaFile]:
+        media: list[MediaFile] = []
+        entries = await self._safe(self.client.get_calendar(start, end), [])
+        for entry in entries or []:
+            if not entry.get("hasAttachments"):
+                continue
+            media += await self._safe(
+                self.client.get_calendar_attachments(
+                    entry["id"], entry.get("title", ""), (entry.get("startDate") or "")[:10]
+                ),
+                [],
+            )
+        return media
