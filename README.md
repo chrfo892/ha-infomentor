@@ -79,6 +79,26 @@ automation:
 The entity is unavailable on days off, when the school is closed, and for pupils
 without the time registration module, so it will not nag on weekends.
 
+## Service: `infomentor.set_time_registration_comment`
+
+This service writes a parent comment back to the InfoMentor time registration
+view. Pick one or more pupil devices, optionally choose a date, and enter the
+comment text:
+
+```yaml
+action: infomentor.set_time_registration_comment
+data:
+  device_id: ["<pupil device>"]
+  date: "2026-09-02"
+  comment: "Can go home by herself"
+```
+
+`date` is optional and defaults to today. The service refreshes the integration
+after saving so `binary_sensor.<pupil>_pickup_comment_missing` updates quickly.
+
+This sends data to the school system and the comment may be visible to school
+staff.
+
 ## Events
 
 | Event | Fired when |
@@ -166,14 +186,15 @@ automation:
       - action: infomentor.download_file
         data:
           file_id: "{{ trigger.event.data.file_id }}"
-          path: /media/infomentor/{{ trigger.event.data.pupil_name }}
       - action: notify.mobile_app
         data:
           message: "New photo: {{ trigger.event.data.entry_title }}"
 ```
 
-The target directory must be listed under `allowlist_external_dirs` in
-`configuration.yaml`, or be under `/media`.
+`path` is optional and defaults to the configured download folder, or
+`/media/infomentor` if no folder is configured. When overridden, the target
+directory must be listed under `allowlist_external_dirs` in `configuration.yaml`,
+or be under `/media`.
 
 ## Notes
 

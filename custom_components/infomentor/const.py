@@ -48,6 +48,7 @@ EVENT_NEW_CALENDAR_ATTACHMENT = f"{DOMAIN}_new_calendar_attachment"
 
 SERVICE_DOWNLOAD_FILE = "download_file"
 SERVICE_DOWNLOAD_BACKLOG = "download_backlog"
+SERVICE_SET_TIME_REGISTRATION_COMMENT = "set_time_registration_comment"
 
 ATTR_FILE_ID = "file_id"
 ATTR_PATH = "path"
@@ -56,6 +57,8 @@ ATTR_PUPIL_ID = "pupil_id"
 ATTR_DEVICE_ID = "device_id"
 ATTR_START_DATE = "start_date"
 ATTR_END_DATE = "end_date"
+ATTR_DATE = "date"
+ATTR_COMMENT = "comment"
 ATTR_SOURCES = "sources"
 ATTR_LIMIT = "limit"
 

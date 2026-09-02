@@ -156,6 +156,9 @@ class LatestLearnLogSensor(InfoMentorEntity, SensorEntity):
         return {
             "title": entry.title,
             "group": entry.group_name or "individual",
+            "description": entry.text,
+            "description_html": entry.text_html,
+            "comments": entry.comments,
             "image_count": len(entry.media),
             "files": [
                 {"file_id": media.file_id, "filename": media.filename}

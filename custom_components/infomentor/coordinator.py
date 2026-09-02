@@ -86,12 +86,14 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
         update_interval: timedelta,
         modules: dict[str, list[str]] | None = None,
         download_path: str | None = None,
+        default_download_path: str | None = None,
     ) -> None:
         super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=update_interval)
         self.client = client
         self.pupils = pupils
         self._modules = modules or {}
         self._download_path = download_path
+        self.default_download_path = default_download_path
         self._lock = asyncio.Lock()
         self._store: Store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._seen_files: set[int] = set()
@@ -248,8 +250,12 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
             self._seen_files |= new_ids
             await self._store.async_save(sorted(self._seen_files))
 
-    async def _download(
-        self, media: MediaFile, pupil: Pupil, path: str | None = None
+    async def async_download_media(
+        self,
+        media: MediaFile,
+        pupil: Pupil,
+        path: str | None = None,
+        filename: str | None = None,
     ) -> str | None:
         base = path or self._download_path
         if not base:
@@ -269,7 +275,7 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
             _LOGGER.warning("Could not download %s: %s", media.filename, err)
             return None
 
-        target = folder / media.filename
+        target = folder / (filename or media.filename)
 
         def _write() -> None:
             folder.mkdir(parents=True, exist_ok=True)
@@ -284,12 +290,26 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
         _LOGGER.debug("Saved InfoMentor file to %s", target)
         return str(target)
 
-    def find_media(self, file_id: int) -> MediaFile | None:
+    async def _download(
+        self, media: MediaFile, pupil: Pupil, path: str | None = None
+    ) -> str | None:
+        return await self.async_download_media(media, pupil, path)
+
+    def find_media(self, file_id: int) -> tuple[Pupil, MediaFile] | None:
         for pupil_data in (self.data or {}).values():
             for media in pupil_data.media:
                 if media.file_id == file_id:
-                    return media
+                    return pupil_data.pupil, media
         return None
+
+    async def async_save_time_registration_comment(
+        self, pupil: Pupil, day: date, comment: str
+    ) -> dict[str, Any]:
+        async with self._lock:
+            await self.client.switch_pupil(pupil.id)
+            result = await self.client.save_time_registration_comment(day, comment)
+        await self.async_request_refresh()
+        return result or {}
 
     # ------------------------------------------------------------------ backlog
 

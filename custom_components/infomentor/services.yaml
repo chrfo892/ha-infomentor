@@ -14,8 +14,10 @@ download_file:
           mode: box
     path:
       name: Target directory
-      description: Directory to save into. Must be listed in allowlist_external_dirs.
-      required: true
+      description: >-
+        Override the download folder. Defaults to /media/infomentor and uses the
+        same pupil/photos/letters folder layout as automatic downloads.
+      required: false
       example: /media/infomentor
       selector:
         text:
@@ -90,3 +92,31 @@ download_backlog:
       selector:
         number:
           mode: box
+
+set_time_registration_comment:
+  name: Set time registration comment
+  description: >-
+    Write the parent comment in the time registration view for one or more
+    pupil devices. This sends data back to InfoMentor.
+  fields:
+    device_id:
+      name: Pupils
+      description: Pick the pupil devices to update.
+      required: true
+      selector:
+        device:
+          integration: infomentor
+          multiple: true
+    date:
+      name: Date
+      description: Date to write the comment for. Defaults to today.
+      required: false
+      selector:
+        date:
+    comment:
+      name: Comment
+      description: Comment visible in InfoMentor.
+      required: true
+      example: "Can go home by herself"
+      selector:
+        text:

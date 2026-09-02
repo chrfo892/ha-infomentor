@@ -94,6 +94,9 @@ class LearnLogEntry:
     title: str
     group_name: str
     modified_on: datetime | None
+    text: str = ""
+    text_html: str = ""
+    comments: list[dict[str, Any]] = field(default_factory=list)
     media: list[MediaFile] = field(default_factory=list)
 
     @property
@@ -130,6 +133,15 @@ def safe_path_part(text: str) -> str:
     text = re.sub(r"[^A-Za-z0-9._-]+", "_", text)
     text = re.sub(r"_{2,}", "_", text)
     return text.strip("._-")
+
+
+def plain_text_from_html(value: str) -> str:
+    text = re.sub(r"<\s*br\s*/?>", "\n", value or "", flags=re.IGNORECASE)
+    text = re.sub(r"</\s*p\s*>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = html_lib.unescape(text)
+    lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines()]
+    return "\n".join(line for line in lines if line)
 
 
 def _hidden(content: str, name: str) -> str | None:
@@ -272,6 +284,12 @@ class InfoMentorClient:
             json_body={"date": day.isoformat()},
         )
 
+    async def save_time_registration_comment(self, day: date, comment: str) -> Any:
+        return await self._json(
+            f"{HUB}/TimeRegistration/TimeRegistration/SaveComment/",
+            json_body={"date": day.isoformat(), "comment": comment},
+        )
+
     async def get_timetable(self, start: date, end: date) -> Any:
         return await self._json(
             f"{HUB}/timetable/timetable/gettimetablelist",
@@ -374,11 +392,15 @@ def _parse_learnlog_entry(item: dict[str, Any]) -> LearnLogEntry:
     group_name = (item.get("groupName") or "").strip()
     modified_on = parse_swedish_datetime(item.get("lastModifiedOn") or "")
     entry_date = modified_on.date().isoformat() if modified_on else ""
+    text_html = item.get("text") or ""
     return LearnLogEntry(
         id=entry_id,
         title=title,
         group_name=group_name,
         modified_on=modified_on,
+        text=plain_text_from_html(text_html),
+        text_html=text_html,
+        comments=item.get("comments") or [],
         media=[
             MediaFile(
                 file_id=media["fileId"],

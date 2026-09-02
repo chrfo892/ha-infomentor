@@ -17,6 +17,8 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .api import InfoMentorAuthError, InfoMentorClient, InfoMentorError
 from .const import (
+    ATTR_COMMENT,
+    ATTR_DATE,
     ATTR_DEVICE_ID,
     ATTR_END_DATE,
     ATTR_FILE_ID,
@@ -36,6 +38,7 @@ from .const import (
     PLATFORMS,
     SERVICE_DOWNLOAD_BACKLOG,
     SERVICE_DOWNLOAD_FILE,
+    SERVICE_SET_TIME_REGISTRATION_COMMENT,
     SOURCE_LETTERS,
     SOURCE_PHOTOS,
 )
@@ -46,7 +49,7 @@ _LOGGER = logging.getLogger(__name__)
 DOWNLOAD_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_FILE_ID): vol.Coerce(int),
-        vol.Required(ATTR_PATH): cv.string,
+        vol.Optional(ATTR_PATH): cv.string,
         vol.Optional(ATTR_FILENAME): cv.string,
     }
 )
@@ -65,6 +68,14 @@ BACKLOG_SCHEMA = vol.Schema(
     }
 )
 
+COMMENT_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_DEVICE_ID): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional(ATTR_DATE): cv.date,
+        vol.Required(ATTR_COMMENT): vol.All(cv.string, vol.Length(min=1)),
+    }
+)
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # A dedicated session keeps the InfoMentor cookies out of the shared jar.
@@ -80,8 +91,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise HomeAssistantError(f"Could not connect to InfoMentor: {err}") from err
 
     minutes = entry.options.get(CONF_SCAN_MINUTES, DEFAULT_SCAN_MINUTES)
+    default_download_path = entry.options.get(CONF_DOWNLOAD_PATH, DEFAULT_DOWNLOAD_PATH)
     download_path = (
-        entry.options.get(CONF_DOWNLOAD_PATH, DEFAULT_DOWNLOAD_PATH)
+        default_download_path
         if entry.options.get(CONF_AUTO_DOWNLOAD)
         else None
     )
@@ -92,6 +104,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         timedelta(minutes=minutes),
         entry.options.get(CONF_MODULES),
         download_path,
+        default_download_path,
     )
     await coordinator.async_config_entry_first_refresh()
 
@@ -110,6 +123,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not hass.data[DOMAIN]:
             hass.services.async_remove(DOMAIN, SERVICE_DOWNLOAD_FILE)
             hass.services.async_remove(DOMAIN, SERVICE_DOWNLOAD_BACKLOG)
+            hass.services.async_remove(DOMAIN, SERVICE_SET_TIME_REGISTRATION_COMMENT)
     return unloaded
 
 
@@ -137,23 +151,19 @@ def _async_register_services(hass: HomeAssistant) -> None:
     async def async_download_file(call: ServiceCall) -> None:
         file_id = call.data[ATTR_FILE_ID]
         for coordinator in hass.data[DOMAIN].values():
-            media = coordinator.find_media(file_id)
-            if media is None:
+            found = coordinator.find_media(file_id)
+            if found is None:
                 continue
+            pupil, media = found
 
-            target_dir = Path(call.data[ATTR_PATH])
-            if not hass.config.is_allowed_path(str(target_dir)):
-                raise HomeAssistantError(f"{target_dir} is not an allowed path.")
-
-            content = await coordinator.client.download(media.url)
-            filename = call.data.get(ATTR_FILENAME) or media.filename
-
-            def _write() -> None:
-                target_dir.mkdir(parents=True, exist_ok=True)
-                (target_dir / filename).write_bytes(content)
-
-            await hass.async_add_executor_job(_write)
-            _LOGGER.debug("Saved InfoMentor file %s to %s", file_id, target_dir / filename)
+            saved = await coordinator.async_download_media(
+                media,
+                pupil,
+                call.data.get(ATTR_PATH) or coordinator.default_download_path,
+                call.data.get(ATTR_FILENAME),
+            )
+            if saved is None:
+                raise HomeAssistantError(f"Could not save InfoMentor file {file_id}.")
             return
 
         raise HomeAssistantError(f"No known InfoMentor file with id {file_id}.")
@@ -209,5 +219,43 @@ def _async_register_services(hass: HomeAssistant) -> None:
         SERVICE_DOWNLOAD_BACKLOG,
         async_download_backlog,
         schema=BACKLOG_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
+    async def async_set_time_registration_comment(call: ServiceCall) -> ServiceResponse:
+        pupil_ids = _pupil_ids_from_devices(hass, call.data[ATTR_DEVICE_ID])
+        if not pupil_ids:
+            raise HomeAssistantError("No InfoMentor pupil device selected.")
+
+        day = call.data.get(ATTR_DATE) or date.today()
+        comment = call.data[ATTR_COMMENT]
+        results: dict[str, Any] = {}
+        known: list[str] = []
+
+        for coordinator in hass.data[DOMAIN].values():
+            known += [f"{p.id} ({p.name})" for p in coordinator.pupils]
+            for pupil in coordinator.pupils:
+                if pupil.id not in pupil_ids:
+                    continue
+                response = await coordinator.async_save_time_registration_comment(
+                    pupil, day, comment
+                )
+                results[pupil.id] = {
+                    "pupil_name": pupil.name,
+                    "success": bool(response.get("success")),
+                    "response": response,
+                }
+
+        if not results:
+            raise HomeAssistantError(
+                f"No selected devices matched InfoMentor pupils. Known pupils: {', '.join(known)}"
+            )
+        return results
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_TIME_REGISTRATION_COMMENT,
+        async_set_time_registration_comment,
+        schema=COMMENT_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
