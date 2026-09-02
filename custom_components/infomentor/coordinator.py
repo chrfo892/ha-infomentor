@@ -123,6 +123,7 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
         self._store: Store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._seen_files: set[int] = set()
         self._loaded_seen = False
+        self._has_completed_refresh = False
 
     def modules_for(self, pupil_id: str) -> list[str]:
         """Unconfigured pupils fetch everything."""
@@ -158,7 +159,9 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
             except (aiohttp.ClientError, asyncio.TimeoutError) as err:
                 raise UpdateFailed(f"Connection to InfoMentor failed: {err}") from err
 
-        await self._emit_new_media(data, suppress=first_run)
+        suppress = first_run or not self._has_completed_refresh
+        await self._emit_new_media(data, suppress=suppress)
+        self._has_completed_refresh = True
         return data
 
     async def _fetch_pupil(self, pupil: Pupil) -> PupilData:
@@ -314,7 +317,8 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
             return None
 
         try:
-            content = await self.client.download(media.url)
+            async with asyncio.timeout(60):
+                content = await self.client.download(media.url)
         except (InfoMentorError, aiohttp.ClientError, asyncio.TimeoutError) as err:
             _LOGGER.warning("Could not download %s: %s", media.filename, err)
             return None

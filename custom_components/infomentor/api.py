@@ -27,6 +27,8 @@ USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 )
+REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30)
+DOWNLOAD_TIMEOUT = aiohttp.ClientTimeout(total=60)
 
 LEARNLOG_INDIVIDUAL = 1
 LEARNLOG_GROUP = 2
@@ -171,12 +173,12 @@ class InfoMentorClient:
     async def login(self) -> bool:
         self._session.cookie_jar.clear()
 
-        async with self._session.get(HUB, headers=self._headers) as resp:
+        async with self._session.get(HUB, headers=self._headers, timeout=REQUEST_TIMEOUT) as resp:
             content = await resp.text()
         oauth_token = self._extract_oauth_token(content)
 
         async with self._session.post(
-            IM1, data={"oauth_token": oauth_token}, headers=self._headers
+            IM1, data={"oauth_token": oauth_token}, headers=self._headers, timeout=REQUEST_TIMEOUT
         ) as resp:
             content = await resp.text()
 
@@ -193,7 +195,7 @@ class InfoMentorClient:
                 raise InfoMentorError(f"Login form field {field_name} missing.")
             payload[field_name] = value
 
-        async with self._session.post(IM1, data=payload, headers=self._headers) as resp:
+        async with self._session.post(IM1, data=payload, headers=self._headers, timeout=REQUEST_TIMEOUT) as resp:
             content = await resp.text()
 
         try:
@@ -202,13 +204,14 @@ class InfoMentorClient:
             raise InfoMentorAuthError("Username or password rejected.") from err
 
         async with self._session.post(
-            IM1, data={"oauth_token": oauth_token}, headers=self._headers
+            IM1, data={"oauth_token": oauth_token}, headers=self._headers, timeout=REQUEST_TIMEOUT
         ) as resp:
             await resp.text()
 
         async with self._session.post(
             f"{HUB}/authentication/authentication/isauthenticated/",
             headers=self._ajax_headers,
+            timeout=REQUEST_TIMEOUT,
         ) as resp:
             text = (await resp.text()).strip().strip('"')
 
@@ -226,7 +229,7 @@ class InfoMentorClient:
     # ------------------------------------------------------------------ pupils
 
     async def async_get_pupils(self) -> list[Pupil]:
-        async with self._session.get(f"{HUB}/", headers=self._headers) as resp:
+        async with self._session.get(f"{HUB}/", headers=self._headers, timeout=REQUEST_TIMEOUT) as resp:
             content = await resp.text()
 
         matches = list(_PUPIL_ID_RE.finditer(content))
@@ -256,7 +259,7 @@ class InfoMentorClient:
     async def switch_pupil(self, pupil_id: str) -> None:
         """Server-side session state - callers must serialise this."""
         async with self._session.get(
-            f"{HUB}/Account/PupilSwitcher/SwitchPupil/{pupil_id}", headers=self._headers
+            f"{HUB}/Account/PupilSwitcher/SwitchPupil/{pupil_id}", headers=self._headers, timeout=REQUEST_TIMEOUT
         ) as resp:
             await resp.read()
 
@@ -344,7 +347,7 @@ class InfoMentorClient:
     async def download(self, url: str) -> bytes:
         """Resource URLs carry no token - they only work on the logged-in session."""
         absolute = url if url.startswith("http") else HUB + url
-        async with self._session.get(absolute, headers=self._headers) as resp:
+        async with self._session.get(absolute, headers=self._headers, timeout=DOWNLOAD_TIMEOUT) as resp:
             resp.raise_for_status()
             return await resp.read()
 
@@ -359,7 +362,12 @@ class InfoMentorClient:
         _retry: bool = True,
     ) -> Any:
         async with self._session.post(
-            url, json=json_body, data=data, params=params, headers=self._ajax_headers
+            url,
+            json=json_body,
+            data=data,
+            params=params,
+            headers=self._ajax_headers,
+            timeout=REQUEST_TIMEOUT,
         ) as resp:
             if "HandleUnauthorizedRequest" in str(resp.url):
                 raise ModuleUnavailable(f"{url} is not available for this pupil.")
