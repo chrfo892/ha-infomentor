@@ -151,7 +151,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
     if hass.services.has_service(DOMAIN, SERVICE_DOWNLOAD_FILE):
         return
 
-    async def async_download_file(call: ServiceCall) -> None:
+    async def async_download_file(call: ServiceCall) -> ServiceResponse:
         file_id = call.data[ATTR_FILE_ID]
         for coordinator in hass.data[DOMAIN].values():
             found = coordinator.find_media(file_id)
@@ -167,12 +167,21 @@ def _async_register_services(hass: HomeAssistant) -> None:
             )
             if saved is None:
                 raise HomeAssistantError(f"Could not save InfoMentor file {file_id}.")
-            return
+            return {
+                "path": saved,
+                "filename": Path(saved).name,
+                "file_id": file_id,
+                "pupil_name": pupil.name,
+            }
 
         raise HomeAssistantError(f"No known InfoMentor file with id {file_id}.")
 
     hass.services.async_register(
-        DOMAIN, SERVICE_DOWNLOAD_FILE, async_download_file, schema=DOWNLOAD_SCHEMA
+        DOMAIN,
+        SERVICE_DOWNLOAD_FILE,
+        async_download_file,
+        schema=DOWNLOAD_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
     )
 
     async def async_download_backlog(call: ServiceCall) -> ServiceResponse:

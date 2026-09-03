@@ -189,6 +189,20 @@ logged-in session, so a generic downloader cannot fetch them. This service does
 the authenticated download and writes the file to disk; anything further
 (Google Drive, Nextcloud, notifications) belongs in your own automation.
 
+The service response is available to response-aware callers such as Node-RED:
+
+```json
+{
+  "path": "/media/infomentor/Anna_Andersson/photos/individual/2026-09-03_IMG_1.jpeg",
+  "filename": "2026-09-03_IMG_1.jpeg",
+  "file_id": 12345678,
+  "pupil_name": "Andersson, Anna"
+}
+```
+
+Use `path` as the input to the next Node-RED node that uploads the file. Normal
+Home Assistant automations may still call the service without reading a response.
+
 ```yaml
 automation:
   - alias: Archive new preschool photos

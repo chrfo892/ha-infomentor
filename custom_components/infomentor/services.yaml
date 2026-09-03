@@ -3,6 +3,7 @@ download_file:
   description: >-
     Download an InfoMentor file (learnlog image or calendar attachment) to disk.
     The URLs are session-authenticated, so only the integration can fetch them.
+    Returns the saved path, filename, file id and pupil name.
   fields:
     file_id:
       name: File ID
