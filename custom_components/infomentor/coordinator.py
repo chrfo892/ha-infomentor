@@ -94,7 +94,7 @@ def _learnlog_post_response(pupil: Pupil, entry: LearnLogEntry) -> dict[str, Any
         "id": entry.id,
         "title": entry.title,
         "date": entry.modified_on.isoformat() if entry.modified_on else None,
-        "scope": "group" if entry.is_group else "individual",
+        "scope": "individual" if entry.is_individual else "group",
         "group_name": entry.group_name or None,
         "description": entry.text,
         "description_html": entry.text_html,
