@@ -87,6 +87,30 @@ def _subfolder(media: MediaFile) -> Path:
     return Path("photos") / "individual"
 
 
+def _learnlog_post_response(pupil: Pupil, entry: LearnLogEntry) -> dict[str, Any]:
+    return {
+        "pupil_id": pupil.id,
+        "pupil_name": pupil.name,
+        "id": entry.id,
+        "title": entry.title,
+        "date": entry.modified_on.isoformat() if entry.modified_on else None,
+        "scope": "group" if entry.is_group else "individual",
+        "group_name": entry.group_name or None,
+        "description": entry.text,
+        "description_html": entry.text_html,
+        "comments": entry.comments,
+        "image_count": len(entry.media),
+        "files": [
+            {
+                "file_id": media.file_id,
+                "filename": media.filename,
+                "entry_id": media.entry_id,
+            }
+            for media in entry.media
+        ],
+    }
+
+
 @dataclass
 class PupilData:
     pupil: Pupil
@@ -122,6 +146,7 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
         self._lock = asyncio.Lock()
         self._store: Store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._seen_files: set[int] = set()
+        self._queried_media: dict[int, tuple[Pupil, MediaFile]] = {}
         self._loaded_seen = False
         self._has_completed_refresh = False
 
@@ -351,7 +376,25 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
             for media in pupil_data.media:
                 if media.file_id == file_id:
                     return pupil_data.pupil, media
-        return None
+        return self._queried_media.get(file_id)
+
+    async def async_get_learnlog_posts(
+        self, pupils: list[Pupil], start: date, end: date
+    ) -> list[dict[str, Any]]:
+        """Return individual and group learnlog posts within an inclusive date range."""
+        posts: list[dict[str, Any]] = []
+
+        async with self._lock:
+            for pupil in pupils:
+                await self.client.switch_pupil(pupil.id)
+                entries = await self._learnlog_entries_in_range(start, end)
+                for entry in entries:
+                    for media in entry.media:
+                        self._queried_media[media.file_id] = (pupil, media)
+                    posts.append(_learnlog_post_response(pupil, entry))
+
+        posts.sort(key=lambda post: post["date"] or "", reverse=True)
+        return posts
 
     async def async_save_time_registration_comment(
         self, pupil: Pupil, day: date, comment: str
@@ -361,6 +404,40 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
             result = await self.client.save_time_registration_comment(day, comment)
         await self.async_request_refresh()
         return result or {}
+
+    async def _learnlog_entries_in_range(
+        self, start: date, end: date
+    ) -> list[LearnLogEntry]:
+        page_size = 50
+        entries_in_range: list[LearnLogEntry] = []
+        seen: set[int] = set()
+
+        for learn_log_type in (LEARNLOG_INDIVIDUAL, LEARNLOG_GROUP):
+            for page in range(1, 101):
+                entries = await self._safe(
+                    self.client.get_learnlog_entries(learn_log_type, page, page_size), []
+                )
+                if not entries:
+                    break
+
+                reached_start = False
+                for entry in entries:
+                    if entry.id in seen:
+                        continue
+                    seen.add(entry.id)
+                    if entry.modified_on is None:
+                        continue
+                    entry_day = entry.modified_on.date()
+                    if entry_day < start:
+                        reached_start = True
+                        continue
+                    if entry_day <= end:
+                        entries_in_range.append(entry)
+
+                if reached_start or len(entries) < page_size:
+                    break
+
+        return entries_in_range
 
     # ------------------------------------------------------------------ backlog
 
@@ -408,28 +485,11 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
         return {"downloaded": saved, "failed": failed}
 
     async def _backlog_learnlog(self, start: date, end: date) -> list[MediaFile]:
-        page_size = 50
-        media: list[MediaFile] = []
-        for learn_log_type in (LEARNLOG_INDIVIDUAL, LEARNLOG_GROUP):
-            for page in range(1, 101):
-                entries = await self._safe(
-                    self.client.get_learnlog_entries(learn_log_type, page, page_size), []
-                )
-                if not entries:
-                    break
-                # Entries are newest first, so an older one means we can stop.
-                reached_start = False
-                for entry in entries:
-                    day = entry.modified_on.date() if entry.modified_on else None
-                    if day and day < start:
-                        reached_start = True
-                        continue
-                    if day and day > end:
-                        continue
-                    media.extend(entry.media)
-                if reached_start or len(entries) < page_size:
-                    break
-        return media
+        return [
+            media
+            for entry in await self._learnlog_entries_in_range(start, end)
+            for media in entry.media
+        ]
 
     async def _backlog_calendar(self, start: date, end: date) -> list[MediaFile]:
         media: list[MediaFile] = []

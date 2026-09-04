@@ -182,6 +182,31 @@ and the path to the configured download folder. The service returns
 Start with a small `limit` to confirm the files land where you expect - a full
 backlog can be several hundred files and takes a while.
 
+## Service: `infomentor.get_learnlog_posts`
+
+Returns individual and group learnlog posts within an inclusive date range,
+without downloading files. This is intended for Node-RED flows that need the
+post title and image ids before choosing how to build albums or archive files.
+
+```yaml
+action: infomentor.get_learnlog_posts
+data:
+  start_date: "2026-09-01"
+  end_date: "2026-09-30"
+  device_id: ["<pupil device>"]
+response_variable: learnlog
+```
+
+The response has `post_count` and `posts`. Each post contains the same fields
+as the latest learnlog sensor: `title`, `description`, `description_html`,
+`comments`, `image_count`, and `files`; it additionally includes `date`,
+`pupil_name`, `scope` (`individual` or `group`), and `group_name`.
+
+Each item in `files` includes a `file_id` and `filename`. Pass that `file_id`
+to `infomentor.download_file` in the same Home Assistant run to download that
+specific image. The returned post title is then available for an album name in
+your Google Photos flow.
+
 ## Service: `infomentor.download_file`
 
 InfoMentor file URLs carry no token — they only work on the integration's

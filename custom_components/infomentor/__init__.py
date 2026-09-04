@@ -40,6 +40,7 @@ from .const import (
     PLATFORMS,
     SERVICE_DOWNLOAD_BACKLOG,
     SERVICE_DOWNLOAD_FILE,
+    SERVICE_GET_LEARNLOG_POSTS,
     SERVICE_SET_TIME_REGISTRATION_COMMENT,
     SOURCE_LETTERS,
     SOURCE_PHOTOS,
@@ -67,6 +68,15 @@ BACKLOG_SCHEMA = vol.Schema(
         ),
         vol.Optional(ATTR_PATH): cv.string,
         vol.Optional(ATTR_LIMIT): vol.All(vol.Coerce(int), vol.Range(min=1)),
+    }
+)
+
+LEARNLOG_POSTS_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_START_DATE): cv.date,
+        vol.Optional(ATTR_END_DATE): cv.date,
+        vol.Optional(ATTR_DEVICE_ID): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional(ATTR_PUPIL_ID): vol.All(cv.ensure_list, [cv.string]),
     }
 )
 
@@ -126,6 +136,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not hass.data[DOMAIN]:
             hass.services.async_remove(DOMAIN, SERVICE_DOWNLOAD_FILE)
             hass.services.async_remove(DOMAIN, SERVICE_DOWNLOAD_BACKLOG)
+            hass.services.async_remove(DOMAIN, SERVICE_GET_LEARNLOG_POSTS)
             hass.services.async_remove(DOMAIN, SERVICE_SET_TIME_REGISTRATION_COMMENT)
     return unloaded
 
@@ -232,6 +243,40 @@ def _async_register_services(hass: HomeAssistant) -> None:
         async_download_backlog,
         schema=BACKLOG_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
+    )
+
+    async def async_get_learnlog_posts(call: ServiceCall) -> ServiceResponse:
+        start = call.data[ATTR_START_DATE]
+        end = call.data.get(ATTR_END_DATE) or date.today()
+        if end < start:
+            raise HomeAssistantError("end_date must not be before start_date.")
+
+        wanted = {str(pupil_id).strip() for pupil_id in call.data.get(ATTR_PUPIL_ID, [])}
+        wanted |= _pupil_ids_from_devices(hass, call.data.get(ATTR_DEVICE_ID, []))
+        posts: list[dict[str, Any]] = []
+        matched = 0
+        known: list[str] = []
+
+        for coordinator in hass.data[DOMAIN].values():
+            known += [f"{p.id} ({p.name})" for p in coordinator.pupils]
+            pupils = [pupil for pupil in coordinator.pupils if not wanted or pupil.id in wanted]
+            if not pupils:
+                continue
+            matched += len(pupils)
+            posts += await coordinator.async_get_learnlog_posts(pupils, start, end)
+
+        if wanted and not matched:
+            raise HomeAssistantError(
+                f"No pupil matched {sorted(wanted)}. Known pupils: {', '.join(known)}"
+            )
+        return {"posts": posts, "post_count": len(posts)}
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_LEARNLOG_POSTS,
+        async_get_learnlog_posts,
+        schema=LEARNLOG_POSTS_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
     )
 
     async def async_set_time_registration_comment(call: ServiceCall) -> ServiceResponse:

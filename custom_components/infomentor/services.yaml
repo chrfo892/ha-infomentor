@@ -94,6 +94,42 @@ download_backlog:
         number:
           mode: box
 
+get_learnlog_posts:
+  name: Get learnlog posts
+  description: >-
+    Return individual and group learnlog posts for a date range. Returned image
+    file ids can be passed to infomentor.download_file during this HA session.
+  fields:
+    start_date:
+      name: Start date
+      description: Oldest post date to include.
+      required: true
+      selector:
+        date:
+    end_date:
+      name: End date
+      description: Newest post date to include. Defaults to today.
+      required: false
+      selector:
+        date:
+    device_id:
+      name: Pupils
+      description: Pick the pupil devices to query. Defaults to all pupils.
+      required: false
+      selector:
+        device:
+          integration: infomentor
+          multiple: true
+    pupil_id:
+      name: Pupil IDs
+      description: Alternative to picking devices - raw InfoMentor pupil ids.
+      required: false
+      advanced: true
+      example: "1234567"
+      selector:
+        text:
+          multiple: true
+
 set_time_registration_comment:
   name: Set time registration comment
   description: >-

@@ -51,6 +51,7 @@ EVENT_NEW_CALENDAR_ATTACHMENT = f"{DOMAIN}_new_calendar_attachment"
 SERVICE_DOWNLOAD_FILE = "download_file"
 SERVICE_DOWNLOAD_BACKLOG = "download_backlog"
 SERVICE_SET_TIME_REGISTRATION_COMMENT = "set_time_registration_comment"
+SERVICE_GET_LEARNLOG_POSTS = "get_learnlog_posts"
 
 ATTR_FILE_ID = "file_id"
 ATTR_PATH = "path"
