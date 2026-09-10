@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, time as datetime_time, timedelta
 from pathlib import Path
 
 import voluptuous as vol
@@ -23,6 +23,7 @@ from .const import (
     ATTR_END_DATE,
     ATTR_FILE_ID,
     ATTR_FILENAME,
+    ATTR_GO_HOME_TIME,
     ATTR_LIMIT,
     ATTR_PATH,
     ATTR_PUPIL_ID,
@@ -85,6 +86,7 @@ COMMENT_SCHEMA = vol.Schema(
         vol.Required(ATTR_DEVICE_ID): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional(ATTR_DATE): cv.date,
         vol.Required(ATTR_COMMENT): vol.All(cv.string, vol.Length(min=1)),
+        vol.Optional(ATTR_GO_HOME_TIME): cv.time,
     }
 )
 
@@ -286,6 +288,9 @@ def _async_register_services(hass: HomeAssistant) -> None:
 
         day = call.data.get(ATTR_DATE) or date.today()
         comment = call.data[ATTR_COMMENT]
+        go_home_time = call.data.get(ATTR_GO_HOME_TIME)
+        if isinstance(go_home_time, datetime_time):
+            go_home_time = go_home_time.strftime("%H:%M")
         results: dict[str, Any] = {}
         known: list[str] = []
 
@@ -295,10 +300,11 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 if pupil.id not in pupil_ids:
                     continue
                 response = await coordinator.async_save_time_registration_comment(
-                    pupil, day, comment
+                    pupil, day, comment, go_home_time
                 )
                 results[pupil.id] = {
                     "pupil_name": pupil.name,
+                    "go_home_time": go_home_time,
                     "success": bool(response.get("success")),
                     "response": response,
                 }

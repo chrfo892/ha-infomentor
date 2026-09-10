@@ -397,11 +397,48 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
         return posts
 
     async def async_save_time_registration_comment(
-        self, pupil: Pupil, day: date, comment: str
+        self, pupil: Pupil, day: date, comment: str, go_home_time: str | None = None
     ) -> dict[str, Any]:
         async with self._lock:
             await self.client.switch_pupil(pupil.id)
-            result = await self.client.save_time_registration_comment(day, comment)
+            if go_home_time is None:
+                result = await self.client.save_time_registration_comment(day, comment)
+            else:
+                registrations = await self.client.get_time_registrations()
+                registration = next(
+                    (
+                        item
+                        for item in (registrations or {}).get("days", [])
+                        if (item.get("date") or "")[:10] == day.isoformat()
+                    ),
+                    None,
+                )
+                if registration is None:
+                    raise InfoMentorError(
+                        f"No time registration found for {pupil.name} on {day.isoformat()}."
+                    )
+
+                current_comment = await self.client.get_time_registration_day(day)
+                result = await self.client.save_time_registrations(
+                    [
+                        {
+                            "timeRegistrationId": registration.get("timeRegistrationId"),
+                            "date": day.isoformat(),
+                            "startDateTime": registration.get("startDateTime"),
+                            "endDateTime": f"{day.isoformat()}T{go_home_time}",
+                            "schoolOpeningTime": registration.get("schoolOpeningTime"),
+                            "schoolClosingTime": registration.get("schoolClosingTime"),
+                            "registrationType": (
+                                "OnLeave"
+                                if registration.get("onLeave")
+                                else "TimeReg"
+                            ),
+                            "commentText": comment,
+                            "isCommentUpdated": True,
+                            "commentId": current_comment.get("parentCommentId") or 0,
+                        }
+                    ]
+                )
         await self.async_request_refresh()
         return result or {}
 

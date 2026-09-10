@@ -293,6 +293,12 @@ class InfoMentorClient:
             json_body={"date": day.isoformat(), "comment": comment},
         )
 
+    async def save_time_registrations(self, days: list[dict[str, Any]]) -> Any:
+        return await self._json(
+            f"{HUB}/TimeRegistration/TimeRegistration/SaveTimeRegistrations/",
+            json_body={"days": days, "series": None},
+        )
+
     async def get_timetable(self, start: date, end: date) -> Any:
         return await self._json(
             f"{HUB}/timetable/timetable/gettimetablelist",

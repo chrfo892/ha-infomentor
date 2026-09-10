@@ -150,9 +150,18 @@ set_time_registration_comment:
       required: false
       selector:
         date:
+    go_home_time:
+      name: Go-home time
+      description: >-
+        Optional time when the child should leave. The existing arrival time is
+        preserved and the registration end time is updated.
+      required: false
+      example: "16:00:00"
+      selector:
+        time:
     comment:
       name: Comment
-      description: Comment visible in InfoMentor.
+      description: Comment visible in InfoMentor. Required when setting a time.
       required: true
       example: "Can go home by herself"
       selector:

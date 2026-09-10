@@ -62,6 +62,7 @@ ATTR_START_DATE = "start_date"
 ATTR_END_DATE = "end_date"
 ATTR_DATE = "date"
 ATTR_COMMENT = "comment"
+ATTR_GO_HOME_TIME = "go_home_time"
 ATTR_SOURCES = "sources"
 ATTR_LIMIT = "limit"
 

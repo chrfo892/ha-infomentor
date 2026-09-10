@@ -103,11 +103,14 @@ action: infomentor.set_time_registration_comment
 data:
   device_id: ["<pupil device>"]
   date: "2026-09-02"
+  go_home_time: "16:00:00"
   comment: "Can go home by herself"
 ```
 
-`date` is optional and defaults to today. The service refreshes the integration
-after saving so `binary_sensor.<pupil>_pickup_comment_missing` updates quickly.
+`date` is optional and defaults to today. `go_home_time` is optional; when set,
+the existing arrival time is preserved and the registration end time is changed
+to that time. The service refreshes the integration after saving so
+`binary_sensor.<pupil>_pickup_comment_missing` updates quickly.
 
 This sends data to the school system and the comment may be visible to school
 staff.
