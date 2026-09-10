@@ -401,25 +401,24 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
     ) -> dict[str, Any]:
         async with self._lock:
             await self.client.switch_pupil(pupil.id)
-            if go_home_time is None:
-                result = await self.client.save_time_registration_comment(day, comment)
-            else:
-                registrations = await self.client.get_time_registrations()
-                registration = next(
-                    (
-                        item
-                        for item in (registrations or {}).get("days", [])
-                        if (item.get("date") or "")[:10] == day.isoformat()
-                    ),
-                    None,
+            registrations = await self.client.get_time_registrations()
+            registration = next(
+                (
+                    item
+                    for item in (registrations or {}).get("days", [])
+                    if (item.get("date") or "")[:10] == day.isoformat()
+                ),
+                None,
+            )
+            if registration is None:
+                raise InfoMentorError(
+                    f"No time registration found for {pupil.name} on {day.isoformat()}."
                 )
-                if registration is None:
-                    raise InfoMentorError(
-                        f"No time registration found for {pupil.name} on {day.isoformat()}."
-                    )
 
-                current_comment = await self.client.get_time_registration_day(day)
-                result = await self.client.save_time_registrations(
+            current_comment = await self.client.get_time_registration_day(day)
+            time_result: dict[str, Any] = {}
+            if go_home_time is not None:
+                time_result = await self.client.save_time_registrations(
                     [
                         {
                             "timeRegistrationId": registration.get("timeRegistrationId"),
@@ -433,12 +432,29 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
                                 if registration.get("onLeave")
                                 else "TimeReg"
                             ),
-                            "commentText": comment,
-                            "isCommentUpdated": True,
+                            "commentText": current_comment.get("userComment") or "",
+                            "isCommentUpdated": False,
                             "commentId": current_comment.get("parentCommentId") or 0,
                         }
                     ]
+                ) or {}
+
+            comment_result = await self.client.save_time_registration_comment(
+                int(registration["timeRegistrationId"]),
+                int(current_comment.get("parentCommentId") or 0),
+                comment,
+            ) or {}
+            verified = await self.client.get_time_registration_day(day)
+            if (verified.get("userComment") or "") != comment:
+                raise InfoMentorError(
+                    f"InfoMentor did not persist the comment for {pupil.name} on {day.isoformat()}."
                 )
+            result = {
+                "success": bool(comment_result.get("success")),
+                "comment": comment_result,
+                "time": time_result,
+                "verified": True,
+            }
         await self.async_request_refresh()
         return result or {}
 
