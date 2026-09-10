@@ -449,8 +449,16 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
                 raise InfoMentorError(
                     f"InfoMentor did not persist the comment for {pupil.name} on {day.isoformat()}."
                 )
+            comment_success = bool(comment_result.get("success"))
+            time_success = (
+                bool(time_result.get("success"))
+                if go_home_time is not None
+                else True
+            )
             result = {
-                "success": bool(comment_result.get("success")),
+                "success": comment_success and time_success and verified is not None,
+                "comment_success": comment_success,
+                "time_success": time_success,
                 "comment": comment_result,
                 "time": time_result,
                 "verified": True,

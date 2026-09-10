@@ -134,7 +134,8 @@ set_time_registration_comment:
   name: Set time registration comment
   description: >-
     Write the parent comment in the time registration view for one or more
-    pupil devices. This sends data back to InfoMentor.
+    pupil devices. This sends data back to InfoMentor and returns success,
+    comment_success, time_success and verified flags.
   fields:
     device_id:
       name: Pupils

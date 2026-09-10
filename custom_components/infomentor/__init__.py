@@ -306,6 +306,9 @@ def _async_register_services(hass: HomeAssistant) -> None:
                     "pupil_name": pupil.name,
                     "go_home_time": go_home_time,
                     "success": bool(response.get("success")),
+                    "comment_success": response.get("comment_success"),
+                    "time_success": response.get("time_success"),
+                    "verified": response.get("verified"),
                     "response": response,
                 }
 
