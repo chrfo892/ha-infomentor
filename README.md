@@ -31,6 +31,51 @@ the groundwork - this integration would have been far harder without it.
 3. Install **InfoMentor**, restart Home Assistant
 4. Settings → Devices & services → Add integration → **InfoMentor**
 
+## Development workflow
+
+`main` is the stable branch used by releases and HACS. Experimental changes
+are developed in `beta` and should be merged through pull requests.
+
+Typical workflow:
+
+```powershell
+git switch beta
+git pull origin beta
+git switch -c feature/my-change
+# make and test the change
+python -m pytest -q
+git add .
+git commit -m "Describe the change"
+git push -u origin feature/my-change
+```
+
+Open a pull request from `feature/my-change` into `beta`. Test that branch in
+Home Assistant. When it is ready, open a second pull request from `beta` into
+`main`.
+
+For a release, update the integration version in
+`custom_components/infomentor/manifest.json`, merge the release PR into `main`,
+and create a GitHub **Release** (not only a tag) using the same version tag:
+
+```powershell
+git switch main
+git pull origin main
+git tag v0.1.4
+git push origin v0.1.4
+```
+
+Create the GitHub Release from that tag. HACS uses published GitHub Releases
+when they exist. The repository workflows run pytest, HACS validation and
+Hassfest on pushes and pull requests.
+
+Direct pushes to `main` should be disabled in GitHub branch protection. Require
+the validation checks and require a pull request before merging.
+
+The test suite currently covers pure client/model logic and runs without
+InfoMentor credentials. Live API checks should be run locally only; never add
+InfoMentor or Home Assistant credentials to GitHub Actions secrets unless a
+future test explicitly needs them.
+
 ## Entities
 
 Per pupil:
