@@ -274,10 +274,17 @@ class InfoMentorClient:
     async def get_attendance(self) -> Any:
         return await self._json(f"{HUB}/attendance/attendance/appData")
 
-    async def get_time_registrations(self) -> Any:
-        """Parent-registered times for the current week; no week parameter exists."""
+    async def get_time_registrations(self, day: date | None = None) -> Any:
+        """Parent-registered times for the week containing day."""
+        request_data = None
+        if day is not None:
+            request_data = {
+                "date": f"{day.isoformat()}T00:00:00",
+                "showNextWeekIfNoMoreSchoolDays": True,
+            }
         return await self._json(
-            f"{HUB}/TimeRegistration/TimeRegistration/GetTimeRegistrations/"
+            f"{HUB}/TimeRegistration/TimeRegistration/GetTimeRegistrations/",
+            json_body=request_data,
         )
 
     async def get_time_registration_day(self, day: date) -> Any:
