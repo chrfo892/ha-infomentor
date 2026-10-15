@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import sys
+from datetime import date
 from pathlib import Path
+from unittest.mock import AsyncMock
+
+import aiohttp
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "custom_components" / "infomentor"))
 
 from api import (  # noqa: E402
+    HUB,
+    InfoMentorClient,
     LearnLogEntry,
     MediaFile,
     parse_swedish_datetime,
@@ -48,3 +55,18 @@ def test_media_filename_is_safe_and_date_prefixed() -> None:
         entry_date="2026-09-01",
     )
     assert media.filename == "2026-09-01_IMG_1.jpeg"
+
+
+def test_time_registrations_request_keeps_explicit_date() -> None:
+    client = InfoMentorClient(AsyncMock(spec=aiohttp.ClientSession), "test", "test")
+    client._json = AsyncMock(return_value={"days": []})
+
+    asyncio.run(client.get_time_registrations(date(2026, 10, 15)))
+
+    client._json.assert_awaited_once_with(
+        f"{HUB}/TimeRegistration/TimeRegistration/GetTimeRegistrations/",
+        json_body={
+            "date": "2026-10-15T00:00:00",
+            "showNextWeekIfNoMoreSchoolDays": False,
+        },
+    )

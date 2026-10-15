@@ -280,7 +280,7 @@ class InfoMentorClient:
         if day is not None:
             request_data = {
                 "date": f"{day.isoformat()}T00:00:00",
-                "showNextWeekIfNoMoreSchoolDays": True,
+                "showNextWeekIfNoMoreSchoolDays": False,
             }
         return await self._json(
             f"{HUB}/TimeRegistration/TimeRegistration/GetTimeRegistrations/",

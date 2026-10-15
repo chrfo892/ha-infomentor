@@ -427,13 +427,13 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
         target_day = day.date() if isinstance(day, datetime) else day
         async with self._lock:
             await self.client.switch_pupil(pupil.id)
-            current_comment = await self.client.get_time_registration_day(day) or {}
-            registrations = await self.client.get_time_registrations()
+            current_comment = await self.client.get_time_registration_day(target_day) or {}
+            registrations = await self.client.get_time_registrations(target_day)
             registration = next(
                 (
                     item
                     for item in (registrations or {}).get("days", [])
-                    if _registration_matches_day(item, day)
+                    if _registration_matches_day(item, target_day)
                 ),
                 None,
             )
@@ -457,7 +457,7 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
                             "timeRegistrationId": registration.get("timeRegistrationId"),
                             "date": target_day.isoformat(),
                             "startDateTime": registration.get("startDateTime"),
-                            "endDateTime": f"{day.isoformat()}T{go_home_time}",
+                            "endDateTime": f"{target_day.isoformat()}T{go_home_time}",
                             "schoolOpeningTime": registration.get("schoolOpeningTime"),
                             "schoolClosingTime": registration.get("schoolClosingTime"),
                             "registrationType": (
