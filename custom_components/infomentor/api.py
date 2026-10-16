@@ -153,6 +153,21 @@ def _hidden(content: str, name: str) -> str | None:
     return html_lib.unescape(match.group(1)) if match else None
 
 
+def time_registration_response_summary(response: Any) -> str:
+    if response is None:
+        return "empty/null response"
+    if not isinstance(response, dict):
+        return f"unexpected response type: {type(response).__name__}"
+    fields = ", ".join(sorted(response)) or "none"
+    if "days" not in response:
+        days = "missing"
+    elif isinstance(response["days"], list):
+        days = f"{len(response['days'])} entries"
+    else:
+        days = type(response["days"]).__name__
+    return f"fields=[{fields}]; days={days}"
+
+
 class InfoMentorClient:
     """Talks to the InfoMentor hub on behalf of one account."""
 

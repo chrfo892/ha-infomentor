@@ -32,6 +32,7 @@ from .api import (
     ModuleUnavailable,
     Pupil,
     safe_path_part,
+    time_registration_response_summary,
 )
 from .const import (
     ALL_MODULES,
@@ -427,7 +428,8 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
         target_day = day.date() if isinstance(day, datetime) else day
         async with self._lock:
             await self.client.switch_pupil(pupil.id)
-            current_comment = await self.client.get_time_registration_day(target_day) or {}
+            comment_response = await self.client.get_time_registration_day(target_day)
+            current_comment = comment_response or {}
             registrations = await self.client.get_time_registrations(target_day)
             registration = next(
                 (
@@ -446,7 +448,9 @@ class InfoMentorCoordinator(DataUpdateCoordinator[dict[str, PupilData]]):
                 ]
                 raise InfoMentorError(
                     f"No time registration found for {pupil.name} on {target_day.isoformat()}. "
-                    f"Available dates: {available_dates or 'none'}."
+                    f"Available dates: {available_dates or 'none'}. "
+                    f"GetTimeRegistrations: {time_registration_response_summary(registrations)}. "
+                    f"GetComments: {time_registration_response_summary(comment_response)}."
                 )
 
             time_result: dict[str, Any] = {}
