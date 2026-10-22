@@ -24,12 +24,67 @@ The login handshake was worked out from
 a C# lab that first mapped the InfoMentor API. Full credit to that project for
 the groundwork - this integration would have been far harder without it.
 
+The InfoMentor icon is sourced from the [official InfoMentor website](https://www.infomentor.se/wp-content/uploads/2024/04/im-logo-512.png).
+The InfoMentor name and icon belong to their respective owner and are not covered
+by this project's MIT license. This integration is unofficial.
+
 ## Installation (HACS)
 
 1. HACS → Integrations → ⋮ → Custom repositories
 2. Add this repository, category **Integration**
 3. Install **InfoMentor**, restart Home Assistant
 4. Settings → Devices & services → Add integration → **InfoMentor**
+
+## Development workflow
+
+`main` is the stable branch used by releases and HACS. Experimental changes
+are developed in `beta` and should be merged through pull requests.
+
+Typical workflow:
+
+```powershell
+git switch beta
+git pull origin beta
+git switch -c feature/my-change
+# make and test the change
+python -m pytest -q
+git add .
+git commit -m "Describe the change"
+git push -u origin feature/my-change
+```
+
+Open a pull request from `feature/my-change` into `beta`. Test that branch in
+Home Assistant. When it is ready, open a second pull request from `beta` into
+`main`.
+
+For a release, update the integration version in
+`custom_components/infomentor/manifest.json`, merge the release PR into `main`,
+and create a GitHub **Release** (not only a tag) using the same version tag:
+
+```powershell
+git switch main
+git pull origin main
+git tag v0.1.4
+git push origin v0.1.4
+```
+
+Create the GitHub Release from that tag. HACS uses published GitHub Releases
+when they exist. The repository workflows run pytest, HACS validation and
+Hassfest on pushes and pull requests.
+
+Direct pushes to `main` should be disabled in GitHub branch protection. Require
+the validation checks and require a pull request before merging.
+
+HACS also checks GitHub repository metadata. Set a repository description and
+topics (for example, `home-assistant`, `hacs`, and `infomentor`) using the About
+settings on GitHub. GitHub must recognize the MIT license on the default branch;
+a license added only on `beta` may not be recognized until it reaches `main`.
+The integration includes its icon in `custom_components/infomentor/brand/`.
+
+The test suite currently covers pure client/model logic and runs without
+InfoMentor credentials. Live API checks should be run locally only; never add
+InfoMentor or Home Assistant credentials to GitHub Actions secrets unless a
+future test explicitly needs them.
 
 ## Entities
 

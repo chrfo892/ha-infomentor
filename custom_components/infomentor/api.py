@@ -153,6 +153,21 @@ def _hidden(content: str, name: str) -> str | None:
     return html_lib.unescape(match.group(1)) if match else None
 
 
+def time_registration_response_summary(response: Any) -> str:
+    if response is None:
+        return "empty/null response"
+    if not isinstance(response, dict):
+        return f"unexpected response type: {type(response).__name__}"
+    fields = ", ".join(sorted(response)) or "none"
+    if "days" not in response:
+        days = "missing"
+    elif isinstance(response["days"], list):
+        days = f"{len(response['days'])} entries"
+    else:
+        days = type(response["days"]).__name__
+    return f"fields=[{fields}]; days={days}"
+
+
 class InfoMentorClient:
     """Talks to the InfoMentor hub on behalf of one account."""
 
@@ -160,6 +175,7 @@ class InfoMentorClient:
         self._session = session
         self._username = username
         self._password = password
+        self._selected_pupil_id: str | None = None
         self._headers = {"User-Agent": USER_AGENT, "Accept-Language": "sv-SE,sv;q=0.9"}
         self._ajax_headers = {
             **self._headers,
@@ -261,7 +277,9 @@ class InfoMentorClient:
         async with self._session.get(
             f"{HUB}/Account/PupilSwitcher/SwitchPupil/{pupil_id}", headers=self._headers, timeout=REQUEST_TIMEOUT
         ) as resp:
+            resp.raise_for_status()
             await resp.read()
+        self._selected_pupil_id = pupil_id
 
     # --------------------------------------------------------------- endpoints
 
@@ -274,10 +292,18 @@ class InfoMentorClient:
     async def get_attendance(self) -> Any:
         return await self._json(f"{HUB}/attendance/attendance/appData")
 
-    async def get_time_registrations(self) -> Any:
-        """Parent-registered times for the current week; no week parameter exists."""
+    async def get_time_registrations(self, day: date | None = None) -> Any:
+        """Parent-registered times for the week containing day."""
+        request_data = None
+        if day is not None:
+            request_data = {
+                "date": f"{day.isoformat()}T00:00:00",
+                "showNextWeekIfNoMoreSchoolDays": False,
+            }
         return await self._json(
-            f"{HUB}/TimeRegistration/TimeRegistration/GetTimeRegistrations/"
+            f"{HUB}/TimeRegistration/TimeRegistration/GetTimeRegistrations/",
+            json_body=request_data,
+            _retry_empty=True,
         )
 
     async def get_time_registration_day(self, day: date) -> Any:
@@ -285,6 +311,7 @@ class InfoMentorClient:
         return await self._json(
             f"{HUB}/TimeRegistration/TimeRegistration/GetComments/",
             json_body={"date": day.isoformat()},
+            _retry_empty=True,
         )
 
     async def save_time_registration_comment(
@@ -365,6 +392,12 @@ class InfoMentorClient:
 
     # ----------------------------------------------------------------- plumbing
 
+    async def _reauthenticate(self) -> None:
+        pupil_id = self._selected_pupil_id
+        await self.login()
+        if pupil_id is not None:
+            await self.switch_pupil(pupil_id)
+
     async def _json(
         self,
         url: str,
@@ -372,6 +405,7 @@ class InfoMentorClient:
         data: Any = None,
         params: Any = None,
         _retry: bool = True,
+        _retry_empty: bool = False,
     ) -> Any:
         async with self._session.post(
             url,
@@ -386,7 +420,13 @@ class InfoMentorClient:
             resp.raise_for_status()
             text = (await resp.text()).strip()
 
-        if not text:
+        if not text or text == "null":
+            if _retry_empty and _retry:
+                _LOGGER.debug("Empty response from %s, restoring session and pupil", url)
+                await self._reauthenticate()
+                return await self._json(
+                    url, json_body, data, params, _retry=False, _retry_empty=True
+                )
             return None
         try:
             return json.loads(text)
@@ -396,8 +436,10 @@ class InfoMentorClient:
         # An HTML body means the session expired; log in again and retry once.
         if _retry:
             _LOGGER.debug("Non-JSON from %s, re-authenticating", url)
-            await self.login()
-            return await self._json(url, json_body, data, params, _retry=False)
+            await self._reauthenticate()
+            return await self._json(
+                url, json_body, data, params, _retry=False, _retry_empty=_retry_empty
+            )
         raise InfoMentorError(f"{url} returned non-JSON ({len(text)} bytes).")
 
 

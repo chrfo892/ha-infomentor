@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.env
+*.log
+live.txt
+*_check.txt
+tools/*_shape.txt
+tools/*_bundle.txt
