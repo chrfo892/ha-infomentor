@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
-import json
+import getpass
 import os
 import sys
 from datetime import date
@@ -13,16 +14,27 @@ import aiohttp
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components" / "infomentor"))
 
-from api import InfoMentorClient, ModuleUnavailable  # noqa: E402
+from api import (  # noqa: E402
+    InfoMentorClient,
+    ModuleUnavailable,
+    time_registration_response_summary,
+)
 
 
 async def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--date", type=date.fromisoformat, default=date.today())
+    args = parser.parse_args()
+    username = os.environ.get("INFOMENTOR_USERNAME") or getpass.getpass(
+        "InfoMentor username (hidden): "
+    )
+    password = os.environ.get("INFOMENTOR_PASSWORD") or getpass.getpass(
+        "InfoMentor password (hidden): "
+    )
 
     async with aiohttp.ClientSession() as session:
-        client = InfoMentorClient(
-            session, os.environ["INFOMENTOR_USERNAME"], os.environ["INFOMENTOR_PASSWORD"]
-        )
+        client = InfoMentorClient(session, username, password)
         await client.login()
 
         for pupil in await client.async_get_pupils():
@@ -31,6 +43,9 @@ async def main() -> int:
 
             try:
                 week = await client.get_time_registrations()
+                print("  default week:", time_registration_response_summary(week))
+                dated_week = await client.get_time_registrations(args.date)
+                print("  requested week:", time_registration_response_summary(dated_week))
             except ModuleUnavailable:
                 print("  time registration not available for this pupil")
                 continue
@@ -45,11 +60,11 @@ async def main() -> int:
                       f" hasComments={day.get('hasComments')}")
 
             try:
-                today = await client.get_time_registration_day(date.today())
+                today = await client.get_time_registration_day(args.date)
             except ModuleUnavailable:
                 print("  comments not available")
                 continue
-            print("  today:", json.dumps(today, ensure_ascii=False))
+            print("  requested day:", time_registration_response_summary(today))
 
     return 0
 
