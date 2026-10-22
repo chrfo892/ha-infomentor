@@ -24,6 +24,10 @@ The login handshake was worked out from
 a C# lab that first mapped the InfoMentor API. Full credit to that project for
 the groundwork - this integration would have been far harder without it.
 
+The InfoMentor icon is sourced from the [official InfoMentor website](https://www.infomentor.se/wp-content/uploads/2024/04/im-logo-512.png).
+The InfoMentor name and icon belong to their respective owner and are not covered
+by this project's MIT license. This integration is unofficial.
+
 ## Installation (HACS)
 
 1. HACS → Integrations → ⋮ → Custom repositories
@@ -70,6 +74,12 @@ Hassfest on pushes and pull requests.
 
 Direct pushes to `main` should be disabled in GitHub branch protection. Require
 the validation checks and require a pull request before merging.
+
+HACS also checks GitHub repository metadata. Set a repository description and
+topics (for example, `home-assistant`, `hacs`, and `infomentor`) using the About
+settings on GitHub. GitHub must recognize the MIT license on the default branch;
+a license added only on `beta` may not be recognized until it reaches `main`.
+The integration includes its icon in `custom_components/infomentor/brand/`.
 
 The test suite currently covers pure client/model logic and runs without
 InfoMentor credentials. Live API checks should be run locally only; never add
